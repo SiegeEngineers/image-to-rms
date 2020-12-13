@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image to rms</title>
+    <link rel="stylesheet" href="base.min.css"/>
+    <link rel="stylesheet" href="choices.min.css"/>
+    <style>
+        html {
+            background-color: #333;
+            color: #eee;
+            font-family: sans-serif;
+        }
+
+        body {
+            padding-top: 1rem;
+            max-width: 1080px;
+            margin: 0 auto !important;
+            float: none !important;
+        }
+
+        .choices {
+            color: #333;
+            display: inline-block;
+            min-width: 500px;
+        }
+
+        ul {
+            list-style: none;
+        }
+
+        .row {
+            margin-bottom: 1rem;
+        }
+
+        #myCanvas {
+            margin: 20px 50px 20px 50px;
+        }
+
+        button {
+            padding: .5rem 1rem;
+            border: none;
+            outline: none;
+            color: #fff;
+            background: #111;
+            cursor: pointer;
+            position: relative;
+            z-index: 0;
+            border-radius: 10px;
+        }
+
+        button:before {
+            content: '';
+            background: linear-gradient(45deg, #ff0000, #ff7300, #fffb00, #48ff00, #00ffd5, #002bff, #7a00ff, #ff00c8, #ff0000);
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            background-size: 400%;
+            z-index: -1;
+            filter: blur(5px);
+            width: calc(100% + 4px);
+            height: calc(100% + 4px);
+            animation: glowing 20s linear infinite;
+            opacity: 0;
+            transition: opacity .3s ease-in-out;
+            border-radius: 10px;
+        }
+
+        button:active {
+            color: #000
+        }
+
+        button:active:after {
+            background: transparent;
+        }
+
+        button:hover:before {
+            opacity: 1;
+        }
+
+        button:after {
+            z-index: -1;
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: #111;
+            left: 0;
+            top: 0;
+            border-radius: 10px;
+        }
+
+        @keyframes glowing {
+            0% {
+                background-position: 0 0;
+            }
+            50% {
+                background-position: 400% 0;
+            }
+            100% {
+                background-position: 0 0;
+            }
+        }
+    </style>
+</head>
+<body>
+<h1>Image to rms</h1>
+
+<div class="row">
+<ol>
+    <li>Select the default terrain that shall be assigned to all colours of your image initially.</li>
+    <li>Load an image of your choice. Ideally the image size is 101x101 pixels.</li>
+    <li>Select below which terrain shall be used for which colour.</li>
+    <li>Use the download buttons to get a standalone script or just the snippet for the terrains.</li>
+</ol>
+</div>
+
+<div class="row">
+    <label for="default-terrain">Default terrain</label>
+    <select id="default-terrain"></select>
+</div>
+
+<div class="row">
+    <label for="image-input">Load image</label>
+    <input type="file" id="image-input"/>
+</div>
+
+<div class="row">
+    <canvas id="myCanvas" width="101" height="101"
+            style="border:1px solid #000000;transform: matrix(0.9,-0.5,0.9,0.5,0,0);">
+    </canvas>
+</div>
+
+<div class="row">
+    Download script as
+    <button onclick="downloadSnippet()">snippet</button>
+    or
+    <button onclick="downloadStandalone()">standalone</button>
+</div>
+
+<pre id="options"></pre>
+
+<script src="choices.min.js"></script>
+<script src="colour.js"></script>
+<script type="text/javascript">
+    const defaultTerrainChoice = new Choices('#default-terrain', {items: []});
+    const colourChoices = [];
+    const colours = [];
+    let terrains = [];
+    let terraincolours = {};
+
+    const gatherTerrains = (terraincolours) => {
+        const terrains = []
+        for (let key in terraincolours) {
+            if (!terraincolours.hasOwnProperty(key)) {
+                return;
+            }
+            const rgbcolour1 = `rgb(${terraincolours[key][0][0]},${terraincolours[key][0][1]},${terraincolours[key][0][2]})`;
+            const rgbcolour2 = `rgb(${terraincolours[key][1][0]},${terraincolours[key][1][1]},${terraincolours[key][1][2]})`;
+            const rgbcolour3 = `rgb(${terraincolours[key][2][0]},${terraincolours[key][2][1]},${terraincolours[key][2][2]})`;
+            const colourstring = `<span style="color:${rgbcolour1};">&#11044;</span>\
+<span style="color:${rgbcolour2};">&#11044;</span>\
+<span style="color:${rgbcolour3};">&#11044;</span> ${key}`;
+            terrains.push({value: key, label: colourstring});
+        }
+        return terrains;
+    }
+
+    const TOP = (baseTerrain, playerLandTerrain) => `/* ****************************************************** */
+<PLAYER_SETUP>
+random_placement
+
+/* ****************************************************** */
+<LAND_GENERATION>
+base_terrain ${baseTerrain}
+
+create_player_lands
+{
+  terrain_type  ${playerLandTerrain}
+  border_fuzziness                 1
+  land_percent                     1
+  base_size                       1
+}
+
+/* ****************************************************** */
+`;
+
+    const BOTTOM = `
+/* ****************************************************** */
+<OBJECTS_GENERATION>
+
+create_object TOWN_CENTER
+{
+  set_place_for_every_player
+  group_placement_radius     1
+  min_distance_to_players    0
+  max_distance_to_players    0
+}
+create_object VILLAGER
+{
+  set_place_for_every_player
+  group_placement_radius     3
+  min_distance_to_players    3
+  max_distance_to_players    5
+}
+if REGICIDE
+
+create_object KING
+{
+set_place_for_every_player
+min_distance_to_players 6
+max_distance_to_players 7
+}
+
+endif
+
+/* ****************************************************** */
+
+`;
+
+    const TEMPLATE = (terrain, x, y) => `create_land
+{
+  terrain_type  ${terrain}
+  land_position ${x} ${y}
+  base_size 1
+  number_of_tiles 0
+}
+`;
+
+    const downloadSnippet = () => {
+        const snippet = getSnippet();
+        download('image-to-rms-snippet.rms', snippet);
+    }
+
+    const downloadStandalone = () => {
+        const defaultTerrain = defaultTerrainChoice.getValue(true);
+        const top = TOP(defaultTerrain, defaultTerrain);
+        const snippet = getSnippet();
+        download('image-to-rms-standalone.rms', top + snippet + BOTTOM);
+    }
+
+    const download = (filename, text) => {
+        const element = document.createElement('a');
+        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+        element.setAttribute('download', filename);
+
+        element.style.display = 'none';
+        document.body.appendChild(element);
+
+        element.click();
+
+        document.body.removeChild(element);
+    }
+
+    const getSnippet = () => {
+        const c = document.getElementById("myCanvas");
+        const ctx = c.getContext("2d");
+        const imgd = ctx.getImageData(0, 0, 101, 101);
+        const pix = imgd.data;
+
+        const dict = {};
+        let rms = '';
+
+        const rbgtoterrain = {};
+        for (let i = 0; i < colours.length; i++) {
+            const rgbcolour = colours[i];
+            rbgtoterrain[rgbcolour] = document.getElementById('colour-select-' + i).value;
+        }
+
+
+        for (let x = 0; x < 101; x++) {
+            for (let y = 0; y < 101; y++) {
+                const i = (y * 101 + x) * 4;
+                const r = pix[i];
+                const g = pix[i + 1];
+                const b = pix[i + 2];
+                const a = pix[i + 3];
+                const str = `${r}/${g}/${b}`;
+                if (!dict.hasOwnProperty(str)) {
+                    dict[str] = 0;
+                }
+                dict[str]++;
+                const index = `${r}/${g}/${b}`;
+                const terrain = rbgtoterrain[index];
+                rms += TEMPLATE(terrain, x, y);
+            }
+        }
+        return rms;
+    }
+
+    const getTerrainsWithClosestColour = (rgb) => {
+        const closestTerrains = [];
+        let currentDelta = 9999999;
+        for (let terrain in terraincolours) {
+            const terrainColour = terraincolours[terrain][1];
+            const imageColour = fromSlashString(rgb);
+            const delta = deltaErgb(terrainColour, imageColour);
+            if (delta === currentDelta) {
+                closestTerrains.push(terrain);
+            } else if (delta < currentDelta) {
+                currentDelta = delta;
+                closestTerrains.length = 0;
+                closestTerrains.push(terrain);
+            }
+        }
+        return closestTerrains;
+    }
+
+    fetch('terraincolours.json')
+        .then((result) => result.json())
+        .then((tcs) => {
+            terraincolours = tcs;
+            terrains = gatherTerrains(tcs);
+            defaultTerrainChoice.setChoices(terrains,
+                'value',
+                'label',
+                false,
+            );
+            defaultTerrainChoice.setChoiceByValue(['GRASS']);
+        });
+
+    const toSlashString = (r, g, b) => {
+        return `${r}/${g}/${b}`;
+    }
+
+    const fromSlashString = (str) => {
+        const items = str.split('/');
+        return [parseInt(items[0]), parseInt(items[1]), parseInt(items[2])];
+    }
+
+    const autocolour = (i) => {
+        const closestColours = getTerrainsWithClosestColour(colours[i]);
+        const choicesItem = colourChoices[i];
+        choicesItem.setChoiceByValue([closestColours[Math.floor(Math.random() * closestColours.length)]]);
+    }
+
+    document.getElementById('image-input').onchange = ev => {
+        const file = ev.target.files[0];
+        if (file.type !== 'image/png') {
+            alert('Please select a png file!');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = event => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const c = document.getElementById("myCanvas");
+                const ctx = c.getContext("2d");
+                ctx.drawImage(img, 0, 0, 101, 101);
+                const imageData = ctx.getImageData(0, 0, 101, 101);
+                const pix = imageData.data;
+
+                const dict = {};
+
+                for (let x = 0; x < 101; x++) {
+                    for (let y = 0; y < 101; y++) {
+                        const i = (y * 101 + x) * 4;
+                        const r = pix[i];
+                        const g = pix[i + 1];
+                        const b = pix[i + 2];
+                        const a = pix[i + 3];
+                        const str = toSlashString(r, g, b);
+                        if (!dict.hasOwnProperty(str)) {
+                            dict[str] = 0;
+                        }
+                        dict[str]++;
+                    }
+                }
+
+                let colourCount = Object.keys(dict).length;
+                if (colourCount > 200) {
+                    const result = confirm('You are trying to load an image with ' + colourCount + ' distinct colours. That\'s a lot. There are only ' + terrains.length + 'terrains available.\nThis might get very laggy or crash.\nDo you want to try anyway?');
+                    if (!result) {
+                        return;
+                    }
+                } else if (colourCount > terrains.length) {
+                    alert('You are trying to load an image with ' + colourCount + ' distinct colours.\nThere are only ' + terrains.length + 'terrains available.\nSurely, you know what you are doing. GLHF!');
+                }
+
+                const options = document.getElementById('options');
+                const sorted = Object.entries(dict).sort(([, a], [, b]) => b - a);
+                const ul = document.createElement('ul');
+                options.appendChild(ul);
+                colours.length = 0;
+                let index = 0;
+                for (let item of sorted) {
+                    const colour = item[0];
+                    colours.push(colour);
+                    const rgbcolour = 'rgb(' + colour.replaceAll('/', ',') + ')';
+                    const li = document.createElement('li');
+                    li.innerHTML = `<span style="color:${rgbcolour};">&#11044;</span> ${colour}: ${item[1]} <select id="colour-select-${index}"></select> <button onclick="autocolour(${index})">Auto-Colour</button>`;
+                    ul.appendChild(li);
+                    index++;
+                }
+                const defaultTerrain = defaultTerrainChoice.getValue(true);
+                for (let i = 0; i < colours.length; i++) {
+                    const choicesItem = new Choices('#colour-select-' + i, {choices: terrains});
+                    choicesItem.setChoiceByValue([defaultTerrain]);
+                    colourChoices.push(choicesItem);
+                }
+            }
+        }
+        reader.readAsDataURL(file);
+    }
+</script>
+</body>
+</html>
