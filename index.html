@@ -111,7 +111,7 @@
 <ol>
     <li>Select the default terrain that shall be assigned to all colours of your image initially.</li>
     <li>Load an image of your choice. Ideally the image size is 101x101 pixels.</li>
-    <li>Select below which terrain shall be used for which colour.</li>
+    <li>Select below which terrain shall be used for which colour. Choose <code>NONE</code> to exclude tiles from the generated rms code.</li>
     <li>Use the download buttons to get a standalone script or just the snippet for the terrains.</li>
 </ol>
 </div>
@@ -289,7 +289,9 @@ endif
                 dict[str]++;
                 const index = `${r}/${g}/${b}`;
                 const terrain = rbgtoterrain[index];
-                rms += TEMPLATE(terrain, x, y);
+                if (terrain !== 'NONE') {
+                    rms += TEMPLATE(terrain, x, y);
+                }
             }
         }
         return rms;
@@ -403,8 +405,9 @@ endif
                     index++;
                 }
                 const defaultTerrain = defaultTerrainChoice.getValue(true);
+                let choices = [{value: 'NONE', label: 'NONE'}, ...terrains];
                 for (let i = 0; i < colours.length; i++) {
-                    const choicesItem = new Choices('#colour-select-' + i, {choices: terrains});
+                    const choicesItem = new Choices('#colour-select-' + i, {choices: choices});
                     choicesItem.setChoiceByValue([defaultTerrain]);
                     colourChoices.push(choicesItem);
                 }
