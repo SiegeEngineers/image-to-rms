@@ -387,6 +387,7 @@ endif
                 }
 
                 const options = document.getElementById('options');
+                options.innerHTML = '';
                 const sorted = Object.entries(dict).sort(([, a], [, b]) => b - a);
                 const ul = document.createElement('ul');
                 options.appendChild(ul);
