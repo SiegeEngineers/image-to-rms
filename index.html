@@ -466,6 +466,8 @@ endif
         choicesItem.setChoiceByValue([closestColours[Math.floor(Math.random() * closestColours.length)]]);
     }
 
+    const quantize = value => (value / 32 >> 0) * 32;
+
     document.getElementById('image-input').onchange = ev => {
         const file = ev.target.files[0];
         if (file.type !== 'image/png') {
@@ -484,7 +486,7 @@ endif
                 const imageData = ctx.getImageData(0, 0, 101, 101);
                 const pix = imageData.data;
 
-                const dict = {};
+                let dict = {};
 
                 for (let x = 0; x < 101; x++) {
                     for (let y = 0; y < 101; y++) {
@@ -503,11 +505,31 @@ endif
 
                 let colourCount = Object.keys(dict).length;
                 if (colourCount > 200) {
-                    const result = confirm('You are trying to load an image with ' + colourCount + ' distinct colours. That\'s a lot. There are only ' + terrains.length + 'terrains available.\nThis might get very laggy or crash.\nDo you want to try anyway?');
+                    const result = confirm('You are trying to load an image with ' + colourCount + ' distinct colours. That\'s a lot. There are only ' + terrains.length + ' terrains available.\nWe will apply a naive colour reduction algorithm first.\nDo you want to continue with that?');
                     if (!result) {
                         document.getElementById('spinner').classList.add('hidden');
                         return;
                     }
+
+                    dict = {};
+                    for (let x = 0; x < 101; x++) {
+                        for (let y = 0; y < 101; y++) {
+                            const i = (y * 101 + x) * 4;
+                            const r = imageData.data[i] = quantize(pix[i]);
+                            const g = imageData.data[i + 1] = quantize(pix[i + 1]);
+                            const b = imageData.data[i + 2] = quantize(pix[i + 2]);
+                            const a = imageData.data[i + 3] = Math.ceil(pix[i + 3]);
+                            const str = toSlashString(r, g, b);
+                            if (!dict.hasOwnProperty(str)) {
+                                dict[str] = 0;
+                            }
+                            dict[str]++;
+                        }
+                    }
+                    ctx.putImageData(imageData, 0, 0, 0, 0, 101, 101);
+
+                    alert(`${Object.keys(dict).length} unique colour values remaining`);
+
                 } else if (colourCount > terrains.length) {
                     alert('You are trying to load an image with ' + colourCount + ' distinct colours.\nThere are only ' + terrains.length + 'terrains available.\nSurely, you know what you are doing. GLHF!');
                 }
